@@ -14,16 +14,6 @@
   --font-body:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Yu Gothic",system-ui,sans-serif;
   --font-num:"Nunito","Zen Maru Gothic",system-ui,sans-serif;
 }
-@media (prefers-color-scheme: dark){
-  :root:not([data-theme="light"]){
-    --bg:#12152E; --surface:#1C2145; --ink:#EEF0FF; --muted:#A6ADDB; --line:#2E3566;
-    --blue:#7C93FF; --on-blue:#10143A; --blue-soft:#29316B;
-    --pink:#FF86AC; --pink-soft:#4A2540;
-    --yellow:#FFD46B; --yellow-soft:#4A3F1F;
-    --mint:#4FDDB6; --mint-soft:#1E4A42;
-    color-scheme:dark;
-  }
-}
 :root[data-theme="dark"]{
   --bg:#12152E; --surface:#1C2145; --ink:#EEF0FF; --muted:#A6ADDB; --line:#2E3566;
   --blue:#7C93FF; --on-blue:#10143A; --blue-soft:#29316B;
@@ -43,6 +33,8 @@ header{display:flex;flex-direction:column;gap:10px}
 .badges{display:flex;flex-wrap:wrap;gap:8px}
 .badge{display:inline-flex;align-items:center;border-radius:999px;padding:3px 12px;font-size:.8rem;font-weight:700;background:var(--blue-soft);color:var(--blue)}
 .badge.pink{background:var(--pink-soft);color:var(--pink)}
+.themebtn{appearance:none;margin-left:auto;font:inherit;font-size:.8rem;font-weight:700;color:var(--ink);background:var(--surface);border:2px solid var(--line);border-radius:999px;padding:3px 14px;cursor:pointer}
+.themebtn:hover{border-color:var(--blue)}
 .badge.yellow{background:var(--yellow-soft);color:var(--ink)}
 .lead{margin:0;color:var(--muted);max-width:62ch}
 .tabs{display:flex;gap:6px;background:var(--surface);border:2px solid var(--line);border-radius:26px;padding:4px;width:fit-content;max-width:100%;flex-wrap:wrap}
@@ -158,6 +150,7 @@ th{color:var(--muted);font-weight:700;font-size:.78rem}
       <span class="badge pink">2027年3月1日 施行</span>
       <span class="badge">対象 77成分・1,042品目</span>
       <span class="badge yellow">厚労省 2026年9月30日公表分を反映</span>
+      <button type="button" class="themebtn noprint" id="theme-btn" aria-label="表示の色を切り替える"></button>
     </div>
     <h1>OTC類似薬 負担シミュレーター</h1>
     <p class="lead">2027年3月から、OTC類似薬を使用する場合には、原則として別途の負担（薬剤費の４分の１）を求める「一部保険外療養」が実施されます。患者さんの窓口負担のおおよその増額と、先発・後発の違いを試算できます。使い方は、右端のタブにあります。</p>
@@ -311,6 +304,7 @@ th{color:var(--muted);font-weight:700;font-size:.78rem}
         <li>対象外になるケース(こども、がん、指定難病など)は、反映していません。ページ下部に、まとめています。</li>
         <li>特別の料金への消費税は、国で検討中のため、初期設定では加算していません。「計算ルールの設定」で、10%を加算した場合に切り替えられます。</li>
         <li>薬価と「4分の1の価格」は、厚労省の対象医薬品リストの値です。薬価改定などで変わった場合は、数値を書き換えてください。</li>
+        <li>画面の色は、最初は白背景です。画面右上のボタンで、白背景と暗い表示(ダークモード)を切り替えられます。印刷する提出用シートは、どちらの表示でも白地です。</li>
       </ul>
     </div>
   </section>
@@ -460,19 +454,21 @@ function feeA(sum){ if (!(sum > 0)) return 0; return sum < 10 ? 10 : round10(sum
 function rowCostU(r, u){ return r.form === "topical" ? u * r.qty : u * r.perDay * r.days; }
 function rowPoints(r, u){ return r.form === "topical" ? toPoints(u * r.qty) : toPoints(u * r.perDay) * r.days; }
 function calc(p){
-  var drug = 0, target = 0, sumA = 0, oldPts = 0, newPts = 0, i, r, otc;
+  var drug = 0, target = 0, sumA = 0, oldPts = 0, newPts = 0, i, r, otc, det = [], aRow, op, np;
   for (i = 0; i < p.rows.length; i++){
     r = p.rows[i]; otc = r.type === "otc";
     drug += rowCostU(r, r.unit);
-    if (otc){ target += rowCostU(r, r.unit); sumA += rowCostU(r, r.q); }
-    oldPts += rowPoints(r, r.unit);
-    newPts += rowPoints(r, otc ? r.b : r.unit);
+    aRow = otc ? rowCostU(r, r.q) : 0;
+    if (otc){ target += rowCostU(r, r.unit); sumA += aRow; }
+    op = rowPoints(r, r.unit); np = rowPoints(r, otc ? r.b : r.unit);
+    oldPts += op; newPts += np;
+    det.push({ otc: otc, a: aRow, oldPts: op, newPts: np });
   }
   var fee = feeA(sumA), tax = Math.floor(fee * p.tax + 1e-9);
   var oldB = oldPts * 10, newB = newPts * 10;
   var oldTotal = round10(oldB * p.rate), newIns = round10(newB * p.rate);
   var newTotal = newIns + fee + tax;
-  return { drug: drug, target: target, sumA: sumA, fee: fee, tax: tax, oldPts: oldPts, newPts: newPts, oldB: oldB, newB: newB,
+  return { det: det, drug: drug, target: target, sumA: sumA, fee: fee, tax: tax, oldPts: oldPts, newPts: newPts, oldB: oldB, newB: newB,
            oldIns: oldTotal, oldTotal: oldTotal, newIns: newIns, newTotal: newTotal, diff: newTotal - oldTotal };
 }
 /* 先発・後発の比較: 1品目を1調剤分として計算 */
@@ -604,13 +600,40 @@ function cmpCalc(p){
     var taxPct = Math.round(p.tax * 100);
     var h = "", no = 0, mark = ["①", "②", "③"];
     function line(cls, t, e){ h += '<div class="fl ' + cls + '"><span class="t">' + t + '</span><span class="e">' + e + '</span></div>'; }
-    line("", "現行の窓口負担(薬剤分)", "薬価を点数に直し(内服は1日分、外用は1調剤分ごと)、点数 × 10円 × 負担割合<br>= <b>" + yen(c.oldPts) + "点</b> × 10円 × <b>" + rt + "%</b> = " + f2(c.oldB * p.rate) + "円 → <b>" + yen(c.oldTotal) + "円</b>(10円未満四捨五入)");
+    function pts(price, name){ return f2(price) + "円 → <b>" + toPoints(price) + "点</b>"; }
+
+    /* 0. 点数のルール */
+    line("", "計算のルール", "・点数:薬価が15円以下なら1点。15円を超えるときは、10円で割って五捨五超入(例:24.3円 → 2.43 → 2点)。<br>・内服薬は「1日分」、外用薬・点眼などは「1調剤分」を1剤として、点数にします。<br>・特別の料金は、点数にせず、円のまま計算します。");
+
+    /* 1. 薬ごとの計算 */
+    rows.forEach(function(r, i){
+      var d = c.det[i], pr = p.rows[i], oral = pr.form !== "topical", e = "";
+      var nm = esc(r.name || "(未入力)") + (pr.type === "otc" ? "" : "(対象成分ではない薬)");
+      if (oral){
+        e += "現行:薬価 " + f2(pr.unit) + " × 1日量 " + f2(pr.perDay) + " = " + pts(pr.unit * pr.perDay) + " × " + f2(pr.days) + "日 = <b>" + yen(d.oldPts) + "点</b><br>";
+        if (pr.type === "otc"){
+          e += "特別の料金分:4分の1の価格 " + f2(pr.q) + " × " + f2(pr.perDay) + " × " + f2(pr.days) + "日 = <b>" + f2(d.a) + "円</b><br>";
+          e += "新制度の保険分:保険対象の価格 " + f2(pr.b) + " × " + f2(pr.perDay) + " = " + pts(pr.b * pr.perDay) + " × " + f2(pr.days) + "日 = <b>" + yen(d.newPts) + "点</b>";
+        } else e += "新制度の保険分:現行と同じ <b>" + yen(d.newPts) + "点</b>";
+      } else {
+        e += "現行:薬価 " + f2(pr.unit) + " × 総量 " + f2(pr.qty) + esc(r.uom) + " = " + pts(pr.unit * pr.qty) + "<br>";
+        if (pr.type === "otc"){
+          e += "特別の料金分:4分の1の価格 " + f2(pr.q) + " × " + f2(pr.qty) + esc(r.uom) + " = <b>" + f2(d.a) + "円</b><br>";
+          e += "新制度の保険分:保険対象の価格 " + f2(pr.b) + " × " + f2(pr.qty) + esc(r.uom) + " = " + pts(pr.b * pr.qty);
+        } else e += "新制度の保険分:現行と同じ <b>" + yen(d.newPts) + "点</b>";
+      }
+      line("", "薬ごとの計算 " + (i + 1) + ":" + nm, e);
+    });
+    line("", "薬ごとの合計", "現行の点数:" + c.det.map(function(d){ return yen(d.oldPts); }).join(" + ") + " = <b>" + yen(c.oldPts) + "点</b><br>特別の料金の元になる金額:" + (c.sumA > 0 ? c.det.filter(function(d){ return d.otc; }).map(function(d){ return f2(d.a); }).join(" + ") + " = <b>" + f2(c.sumA) + "円</b>" : "対象薬なし") + "<br>新制度の保険の点数:" + c.det.map(function(d){ return yen(d.newPts); }).join(" + ") + " = <b>" + yen(c.newPts) + "点</b>");
+
+    /* 2. 窓口負担 */
+    line("", "現行の窓口負担(薬剤分)", "点数 × 10円 × 負担割合<br>= " + yen(c.oldPts) + "点 × 10円 × " + rt + "%<br>= " + yen(c.oldB) + "円 × " + rt + "% = " + f2(c.oldB * p.rate) + "円 → <b>" + yen(c.oldTotal) + "円</b>(10円未満四捨五入)");
     var nFee = mark[no++];
-    line("", nFee + " 特別の料金", "対象薬の「4分の1の価格」× 数量の合計を、10円単位に四捨五入(10円未満は10円)<br>= " + f2(c.sumA) + "円 → <b>" + yen(c.fee) + "円</b>");
+    line("", nFee + " 特別の料金", "「4分の1の価格 × 数量」の合計を、10円単位に四捨五入(10円未満は10円)<br>= " + (c.sumA > 0 ? f2(c.sumA) + "円 → " : "") + "<b>" + yen(c.fee) + "円</b>");
     var nTax = "";
     if (p.tax > 0){ nTax = mark[no++]; line("", nTax + " 特別の料金への消費税", nFee + " × " + taxPct + "%(1円未満切り捨て)<br>= " + yen(c.fee) + " × " + taxPct + "% = <b>" + yen(c.tax) + "円</b>"); }
     var nIns = mark[no++];
-    line("", nIns + " 保険の自己負担", "(薬価 − 4分の1の価格)を点数に直し、点数 × 10円 × 負担割合<br>= <b>" + yen(c.newPts) + "点</b> × 10円 × " + rt + "% = " + f2(c.newB * p.rate) + "円 → <b>" + yen(c.newIns) + "円</b>(10円未満四捨五入)");
+    line("", nIns + " 保険の自己負担", "保険の点数 × 10円 × 負担割合<br>= " + yen(c.newPts) + "点 × 10円 × " + rt + "%<br>= " + yen(c.newB) + "円 × " + rt + "% = " + f2(c.newB * p.rate) + "円 → <b>" + yen(c.newIns) + "円</b>(10円未満四捨五入)");
     line("", "新制度の窓口負担(薬剤分)", nIns + " + " + nFee + (nTax ? " + " + nTax : "") + "<br>= " + yen(c.newIns) + " + " + yen(c.fee) + (nTax ? " + " + yen(c.tax) : "") + " = <b>" + yen(c.newTotal) + "円</b>");
     line("last", "増額", "新制度 − 現行<br>= " + yen(c.newTotal) + " − " + yen(c.oldTotal) + " = <b>" + signed(c.diff) + "円</b>");
     $("formula").innerHTML = h;
@@ -856,6 +879,25 @@ function cmpCalc(p){
   (function(){
     var d = new Date(), m = d.getMonth() + 1, day = d.getDate();
     $("sh-date").value = d.getFullYear() + "-" + (m < 10 ? "0" : "") + m + "-" + (day < 10 ? "0" : "") + day;
+  })();
+
+  /* 表示の色(ライト/ダーク)の切り替え。初期は白背景 */
+  (function(){
+    var root = document.documentElement, btn = $("theme-btn");
+    function current(){
+      var t = root.getAttribute("data-theme");
+      if (t === "light" || t === "dark") return t;
+      return "light";
+    }
+    function label(){ btn.textContent = current() === "dark" ? "☀ 白背景にする" : "☾ 暗い表示にする"; }
+    try { var saved = localStorage.getItem("otc-theme"); if (saved === "light" || saved === "dark") root.setAttribute("data-theme", saved); } catch (e) {}
+    label();
+    btn.addEventListener("click", function(){
+      var next = current() === "dark" ? "light" : "dark";
+      root.setAttribute("data-theme", next);
+      try { localStorage.setItem("otc-theme", next); } catch (e) {}
+      label();
+    });
   })();
 
   renderRows(); renderPatient(); renderCmp(); renderSheet();
