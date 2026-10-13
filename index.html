@@ -160,7 +160,7 @@ th{color:var(--muted);font-weight:700;font-size:.78rem}
       <span class="badge yellow">厚労省 2026年9月30日公表分を反映</span>
     </div>
     <h1>OTC類似薬 負担シミュレーター</h1>
-    <p class="lead">薬剤費の4分の1が「特別の料金」として窓口負担に加わります。患者さんの窓口負担の増額と、先発・後発の違いを試算できます。使い方は、右端のタブにあります。</p>
+    <p class="lead">2027年3月から、OTC類似薬を使用する場合には、原則として別途の負担（薬剤費の４分の１）を求める「一部保険外療養」が実施されます。患者さんの窓口負担のおおよその増額と、先発・後発の違いを試算できます。使い方は、右端のタブにあります。</p>
     <div class="tabs" role="tablist" aria-label="試算の種類">
       <button class="tab" role="tab" id="tab-pt" aria-selected="true" aria-controls="panel-pt">患者さんの窓口負担</button>
       <button class="tab" role="tab" id="tab-cmp" aria-selected="false" aria-controls="panel-cmp">先発・後発の比較</button>
@@ -173,7 +173,7 @@ th{color:var(--muted);font-weight:700;font-size:.78rem}
   <section id="panel-pt" role="tabpanel" aria-labelledby="tab-pt" class="grid">
     <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
       <div class="card">
-        <h2>① 患者さんの条件</h2>
+        <h2>① 患者の負担割合</h2>
         <div class="field">
           <span class="legend" id="lg-rate">窓口負担割合</span>
           <div class="seg" role="radiogroup" aria-labelledby="lg-rate">
@@ -182,7 +182,7 @@ th{color:var(--muted);font-weight:700;font-size:.78rem}
             <input type="radio" name="rate" id="rate3" value="0.3" checked><label for="rate3">3割</label>
           </div>
         </div>
-        <p class="hint">調剤技術料などは増額に影響しないため、入力は不要です。対象外になるケースは想定していません。対象成分の薬は、すべて特別の料金の対象として計算します(対象外のケースはページ下部にまとめています)。</p>
+        <p class="hint">調剤技術料などは増額に影響しないため、計算していません。対象成分の薬は、すべて特別の料金の対象として計算します(対象外のケースはページ下部にまとめています)。</p>
       </div>
 
       <div class="card">
@@ -211,6 +211,7 @@ th{color:var(--muted);font-weight:700;font-size:.78rem}
           <span class="sub">窓口負担の増額(今回の処方)</span>
           <div class="big"><span id="r-diff">0</span><small>円</small></div>
           <div class="sub">薬剤分の窓口負担 現行 <b class="num" id="r-old">0</b> 円 → 新制度 <b class="num" id="r-new">0</b> 円(<span id="r-ratio" class="num">1.0</span>倍)</div>
+          <div class="sub" id="r-pts"></div>
         </div>
         <div id="r-notice" class="notice" hidden></div>
         <div class="bars">
@@ -432,7 +433,7 @@ th{color:var(--muted);font-weight:700;font-size:.78rem}
     <h2>前提と注意点</h2>
     <ul class="notes">
       <li>特別の料金は、OTC類似薬の薬剤費の4分の1です。残り4分の3に通常の負担割合がかかります。例:薬剤費1,000円・3割負担なら、保険の自己負担225円+特別料金250円=475円(端数処理前)。消費税を加えると約500円です。</li>
-      <li>窓口負担は、薬剤費の分だけを1円未満四捨五入で計算しています。実際の会計は、調剤技術料などと合わせて10円未満を四捨五入するため、増額が数円ずれることがあります。</li>
+      <li>増額は、薬価(円)をそのまま使い、薬剤費の分だけを1円未満四捨五入で計算しています。「現行は点数計算で〇円」は、薬価を点数に直して(内服は1日分、外用は1調剤分を1剤とみなし、1行=1剤で計算)10円未満を四捨五入した参考値です。実際の会計は、調剤技術料などと合わせて計算するため、数円〜数十円ずれることがあります。</li>
       <li>検索で入る薬価は、厚労省の対象医薬品リスト(1,042品目)の値です。薬価改定などで変わった場合は、数値を書き換えてください。</li>
       <li>薬剤費は円で概算しています。薬価の点数換算や、剤ごとの端数処理は反映していません。</li>
       <li>高額療養費、乳幼児医療などの助成、自治体の独自制度による影響は含めていません。</li>
@@ -452,12 +453,23 @@ function roundBy(x, kind){
   return Math.floor(x + 1e-9);
 }
 function round10(x){ return Math.round(x / 10) * 10; }
+/* 薬価→点数: 15円以下は1点、15円超は10円で割って五捨五超入 */
+function toPoints(price){
+  if (price <= 0) return 0;
+  if (price <= 15 + 1e-9) return 1;
+  var x = price / 10, f = Math.floor(x + 1e-9);
+  return f + ((x - f) > 0.5 + 1e-9 ? 1 : 0);
+}
+function rowPoints(r){
+  return r.form === "topical" ? toPoints(r.unit * r.qty) : toPoints(r.unit * r.perDay) * r.days;
+}
 function calc(p){
-  var drug = 0, target = 0, feeEach = 0, i, r, cost, isTarget;
+  var drug = 0, target = 0, feeEach = 0, pts = 0, i, r, cost, isTarget;
   for (i = 0; i < p.rows.length; i++){
     r = p.rows[i];
     cost = r.form === "topical" ? r.unit * r.qty : r.unit * r.perDay * r.days;
     drug += cost;
+    pts += rowPoints(r);
     isTarget = r.type === "otc";
     if (isTarget){ target += cost; feeEach += roundBy(cost / 4, p.round); }
   }
@@ -467,7 +479,8 @@ function calc(p){
   var newIns = Math.round((drug - fee) * p.rate);
   var oldTotal = oldIns;
   var newTotal = newIns + fee + tax;
-  return { drug: drug, target: target, fee: fee, tax: tax, oldIns: oldIns, newIns: newIns, oldTotal: oldTotal, newTotal: newTotal, diff: newTotal - oldTotal };
+  var ptsOld = round10(pts * 10 * p.rate);
+  return { pts: pts, ptsYen: pts * 10, ptsOld: ptsOld, drug: drug, target: target, fee: fee, tax: tax, oldIns: oldIns, newIns: newIns, oldTotal: oldTotal, newTotal: newTotal, diff: newTotal - oldTotal };
 }
 function cmpScenario(cost, gmaxCost, isBrand, otc, p){
   var feeOtc = otc ? roundBy(cost / 4, "floor") : 0;
@@ -521,8 +534,7 @@ function cmpCalc(p){
   var rows = [
     { name: "ロキソニン錠60mg", type: "otc", unit: 10.8, perDay: 3, days: 7 },
     { name: "アレグラ錠60mg", type: "otc", unit: 20.9, perDay: 2, days: 28 },
-    { name: "ヒルドイドソフト軟膏0.3%", type: "otc", form: "topical", unit: 17.7, qty: 100, uom: "g" },
-    { name: "対象成分ではない薬(例)", type: "normal", unit: 20, perDay: 1, days: 28 }
+    { name: "エピナスチン塩酸塩LX点眼液0.1%「SEC」", type: "otc", form: "topical", unit: 228.3, qty: 5, uom: "mL" }
   ];
   rows.forEach(function(r){ r.form = r.form || "oral"; r.qty = r.qty || 0; r.uom = r.uom || "g"; r.perDay = r.perDay || 0; r.days = r.days || 0; });
   rows.forEach(function(r){ r.id = ++seq; });
@@ -597,6 +609,7 @@ function cmpCalc(p){
     var h = "";
     function line(cls, t, e){ h += '<div class="fl ' + cls + '"><span class="t">' + t + '</span><span class="e">' + e + '</span></div>'; }
     line("", "現行の窓口負担(薬剤分)", "薬剤費 × 負担割合<br>= <b>" + yen(c.drug) + "</b> × <b>" + rt + "%</b> = <b>" + yen(c.oldTotal) + "円</b>(1円未満四捨五入)");
+    line("", "(参考)現行の窓口負担を点数計算で出す場合", "薬価を点数に直し(内服は1日分、外用は1調剤分ごと)、点数 × 10円 × 負担割合<br>= " + yen(c.pts) + "点 × 10円 × " + rt + "% = <b>" + yen(c.ptsOld) + "円</b>(10円未満四捨五入)");
     line("", "① 特別の料金(" + roundName + ")", feeBasis + "<br>= " + feeNum + " = <b>" + yen(c.fee) + "円</b>");
     line("", "② 特別の料金への消費税", "① × " + taxPct + "%(1円未満切り捨て)<br>= " + yen(c.fee) + " × " + taxPct + "% = <b>" + yen(c.tax) + "円</b>");
     line("", "③ 保険の自己負担", "(薬剤費 − ①) × 負担割合<br>= (" + yen(c.drug) + " − " + yen(c.fee) + ") × " + rt + "% = <b>" + yen(c.newIns) + "円</b>(1円未満四捨五入)");
@@ -611,6 +624,7 @@ function cmpCalc(p){
     $("r-new").textContent = yen(c.newTotal);
     $("r-old").textContent = yen(c.oldTotal);
     $("r-diff").textContent = signed(c.diff);
+    $("r-pts").innerHTML = "現行は点数計算で <b class=\"num\">" + yen(c.ptsOld) + "</b> 円(薬剤料 " + yen(c.pts) + "点 × 10円 × " + Math.round(p.rate * 100) + "%、10円未満四捨五入)";
     $("r-ratio").textContent = c.oldTotal > 0 ? (c.newTotal / c.oldTotal).toFixed(2) : "–";
     $("t-drug").textContent = yen(c.drug);
     $("t-target").textContent = yen(c.target);
