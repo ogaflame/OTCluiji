@@ -280,7 +280,7 @@ th{color:var(--muted);font-weight:700;font-size:.78rem}
       <ol class="notes">
         <li>「先発・後発の比較」タブを開きます。</li>
         <li>先発医薬品と後発医薬品を、それぞれ検索して選びます。薬価と、OTC類似薬の対象かどうかが入ります。</li>
-        <li>数量を入力します。点眼液は、mLで入力します。</li>
+        <li>数量を入力します。点眼液は、mLで入力します。数量は、先発と後発で連動します。連動させたくないときは、「数量を連動する」のチェックを外します。</li>
         <li>結果の上部に、先発を選んだ場合に窓口負担が増える金額が出ます。内訳の表で、保険の自己負担と特別の料金の違いが分かります。</li>
       </ol>
       <p class="hint">OTC類似薬に該当する先発医薬品は、選定療養の特別の料金を加算しません(厚労省の事務連絡による)。両方を加算した場合の参考値は、「計算ルールの設定」で切り替えられます。</p>
@@ -314,7 +314,7 @@ th{color:var(--muted);font-weight:700;font-size:.78rem}
     <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
       <div class="card">
         <h2>① 比較する薬と条件</h2>
-        <p class="hint">薬価は、添付の対象医薬品リストの値です。初期表示は、アレジオンLX点眼液0.1%と、エピナスチン塩酸塩LX点眼液0.1%「SEC」(ともに5mL)です。点眼液の薬価は1mLあたりなので、数量は mL で入力します。</p>
+        <p class="hint">薬価は、添付の対象医薬品リストの値です。数量は、初期設定で先発と後発が連動します。初期表示は、アレジオンLX点眼液0.1%と、エピナスチン塩酸塩LX点眼液0.1%「SEC」(ともに5mL)です。点眼液の薬価は1mLあたりなので、数量は mL で入力します。</p>
         <div class="field">
           <span class="legend" id="lg-crate">窓口負担割合</span>
           <div class="seg" role="radiogroup" aria-labelledby="lg-crate">
@@ -323,6 +323,7 @@ th{color:var(--muted);font-weight:700;font-size:.78rem}
             <input type="radio" name="crate" id="crate3" value="0.3" checked><label for="crate3">3割</label>
           </div>
         </div>
+        <div class="checks"><label class="check"><input type="checkbox" id="c-link" checked><span>先発と後発の数量を連動する(どちらかを変えると、もう一方も同じ数量になります)</span></label></div>
         <div class="row" style="grid-template-columns:repeat(6,minmax(0,1fr))">
           <div class="field" style="grid-column:span 6"><label for="c-bq">先発医薬品を、対象医薬品リストから探す</label><input type="search" id="c-bq" autocomplete="off" placeholder="例:アレジオン"><div class="sr" id="c-bsr" hidden></div></div>
           <div class="field" style="grid-column:span 6"><label for="c-bname">先発医薬品の名前</label><input type="text" id="c-bname" value="アレジオンLX点眼液0.1%"></div>
@@ -770,6 +771,9 @@ function cmpCalc(p){
     line("last", "先発を選んだ場合の窓口負担", "保険の自己負担 + 特別の料金 + 消費税<br>= " + yen(b.ins) + " + " + yen(b.feeOtc + b.feeSen) + " + " + yen(b.tax) + " = <b>" + yen(b.total) + "円</b>");
     $("c-formula").innerHTML = h;
   }
+  $("c-bqty").addEventListener("input", function(){ if ($("c-link").checked) $("c-gqty").value = $("c-bqty").value; });
+  $("c-gqty").addEventListener("input", function(){ if ($("c-link").checked) $("c-bqty").value = $("c-gqty").value; });
+  $("c-link").addEventListener("input", function(){ if ($("c-link").checked){ $("c-gqty").value = $("c-bqty").value; renderCmp(); } });
   $("c-bprice").addEventListener("input", function(){ cmpQB.b.locked = false; });
   $("c-gprice").addEventListener("input", function(){ cmpQB.g.locked = false; });
   ["crate1","crate2","crate3","c-bqty","c-gqty","c-bprice","c-gprice","c-botc","c-gotc","c-gmax","c-mode","c-tax"].forEach(function(id){
@@ -783,7 +787,9 @@ function cmpCalc(p){
     $("c-" + side + "name").value = d[0];
     $("c-" + side + "price").value = d[4];
     cmpQB[side] = { locked: true, q: d[6], b: d[7] };
-    $("c-" + side + "qty").value = (/点眼/.test(d[0]) && d[5] === "mL") ? 5 : (oral ? 28 : 1);
+    var qv = (/点眼/.test(d[0]) && d[5] === "mL") ? 5 : (oral ? 28 : 1);
+    $("c-" + side + "qty").value = qv;
+    if ($("c-link").checked) $("c-" + (side === "b" ? "g" : "b") + "qty").value = qv;
     $("c-" + side + "pl").textContent = "薬価(円/" + d[5] + ")";
     $("c-" + side + "ql").textContent = "数量(" + d[5] + ")";
     $("c-" + side + "otc").value = "1";
